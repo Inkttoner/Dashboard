@@ -1,0 +1,40 @@
+{
+	"name": "dashboard",
+	"version": "1.0.0",
+	"description": "A dashboard to streamline tasks and productivity",
+	"homepage": "https://github.com/Inkttoner/Dashboard#readme",
+	"bugs": {
+		"url": "https://github.com/Inkttoner/Dashboard/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Inkttoner/Dashboard.git"
+	},
+	"license": "ISC",
+	"author": "Coen de Kruijf",
+	"type": "commonjs",
+	"main": "main.js",
+	"scripts": {
+		"dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+		"dev:renderer": "vite",
+		"dev:electron": "wait-on tcp:5173 && cross-env ELECTRON_RENDERER_URL=http://localhost:5173 electron .",
+		"build": "vite build",
+		"preview": "vite preview",
+		"start": "electron ."
+	},
+	"devDependencies": {
+		"@vitejs/plugin-react": "^4.3.4",
+		"autoprefixer": "^10.4.20",
+		"concurrently": "^9.1.2",
+		"cross-env": "^7.0.3",
+		"electron": "^39.1.2",
+		"postcss": "^8.4.49",
+		"tailwindcss": "^3.4.15",
+		"vite": "^7.2.2",
+		"wait-on": "^8.0.2"
+	},
+	"dependencies": {
+		"react": "^19.2.0",
+		"react-dom": "^19.2.0"
+	}
+}
