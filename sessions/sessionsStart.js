@@ -250,7 +250,7 @@ async function launchWindowsTarget(descriptor, context) {
 		.map((arg) => `'${escapeForPowerShell(arg)}'`)
 		.join(", ");
 
-	const commandParts = [`Start-Process -FilePath '${escapedTarget}'`];
+	const commandParts = [`$proc = Start-Process -FilePath '${escapedTarget}'`];
 	if (escapedArgs) {
 		commandParts.push(`-ArgumentList ${escapedArgs}`);
 	}
@@ -259,10 +259,62 @@ async function launchWindowsTarget(descriptor, context) {
 			`-WorkingDirectory '${escapeForPowerShell(entry.workingDirectory)}'`
 		);
 	}
+	commandParts.push(`-PassThru; $proc.Id`);
 
-	await runPowerShellCommand(commandParts.join(" "));
+	const processId = await new Promise((resolve, reject) => {
+		const child = spawn(
+			"powershell.exe",
+			[
+				"-NoProfile",
+				"-NonInteractive",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				commandParts.join(" "),
+			],
+			{
+				windowsHide: true,
+			}
+		);
 
-	return { skipped: false };
+		let stdout = "";
+		let stderr = "";
+
+		child.stdout.on("data", (data) => {
+			stdout += data.toString();
+		});
+
+		child.stderr.on("data", (data) => {
+			stderr += data.toString();
+		});
+
+		child.once("error", (error) => {
+			reject(error);
+		});
+
+		child.once("exit", (code) => {
+			if (code === 0) {
+				const pid = parseInt(stdout.trim(), 10);
+				resolve(isNaN(pid) ? null : pid);
+			} else {
+				reject(
+					new Error(
+						`PowerShell command exited with code ${code}. Command: ${commandParts.join(
+							" "
+						)}. Error: ${stderr}`
+					)
+				);
+			}
+		});
+	});
+
+	return {
+		skipped: false,
+		processId,
+		target: entry.target,
+		id: entry.id,
+		label: entry.label,
+	};
 }
 
 function sanitizeStudyOptions(config) {
@@ -403,10 +455,23 @@ async function startStudySession(payload = {}, configOverrides = {}) {
 		}
 	}
 
+	const launchedApps = [];
 	if (Array.isArray(config.appsToLaunch)) {
 		for (const appDescriptor of config.appsToLaunch) {
 			try {
-				await launchWindowsTarget(appDescriptor, context);
+				const result = await launchWindowsTarget(
+					appDescriptor,
+					context
+				);
+				if (!result.skipped) {
+					// Track app even if processId is null (e.g., protocol handlers like "spotify:")
+					launchedApps.push({
+						processId: result.processId || null,
+						target: result.target,
+						id: result.id,
+						label: result.label,
+					});
+				}
 			} catch (error) {
 				console.error("[sessions] Failed to launch study app:", error);
 				if (!appDescriptor.optional) {
@@ -419,6 +484,7 @@ async function startStudySession(payload = {}, configOverrides = {}) {
 	return {
 		cancelled: false,
 		durationMinutes,
+		launchedApps,
 	};
 }
 
@@ -464,8 +530,18 @@ async function startGamingSession(payload = {}, configOverrides = {}) {
 		}
 	}
 
+	const launchedApps = [];
 	try {
-		await launchWindowsTarget(selectedGame, context);
+		const result = await launchWindowsTarget(selectedGame, context);
+		if (!result.skipped) {
+			// Track app even if processId is null
+			launchedApps.push({
+				processId: result.processId || null,
+				target: result.target,
+				id: result.id,
+				label: result.label,
+			});
+		}
 	} catch (error) {
 		console.error("[sessions] Failed to launch selected game:", error);
 		if (!selectedGame.optional) {
@@ -493,6 +569,7 @@ async function startGamingSession(payload = {}, configOverrides = {}) {
 	return {
 		cancelled: false,
 		game: selectedGame.label,
+		launchedApps,
 	};
 }
 
@@ -516,8 +593,18 @@ async function startCodingSession(payload = {}, configOverrides = {}) {
 
 	const context = { ide: selectedIde.label, mode: "coding" };
 
+	const launchedApps = [];
 	try {
-		await launchWindowsTarget(selectedIde, context);
+		const result = await launchWindowsTarget(selectedIde, context);
+		if (!result.skipped) {
+			// Track app even if processId is null
+			launchedApps.push({
+				processId: result.processId || null,
+				target: result.target,
+				id: result.id,
+				label: result.label,
+			});
+		}
 	} catch (error) {
 		console.error("[sessions] Failed to launch IDE:", error);
 		if (!selectedIde.optional) {
@@ -528,7 +615,19 @@ async function startCodingSession(payload = {}, configOverrides = {}) {
 	if (Array.isArray(config.extraApps)) {
 		for (const appDescriptor of config.extraApps) {
 			try {
-				await launchWindowsTarget(appDescriptor, context);
+				const result = await launchWindowsTarget(
+					appDescriptor,
+					context
+				);
+				if (!result.skipped) {
+					// Track app even if processId is null
+					launchedApps.push({
+						processId: result.processId || null,
+						target: result.target,
+						id: result.id,
+						label: result.label,
+					});
+				}
 			} catch (error) {
 				console.error("[sessions] Failed to launch extra app:", error);
 				if (!appDescriptor.optional) {
@@ -561,6 +660,154 @@ async function startCodingSession(payload = {}, configOverrides = {}) {
 	return {
 		cancelled: false,
 		ide: selectedIde.label,
+		launchedApps,
+	};
+}
+
+// Map app IDs to their process names for closing by name
+const APP_PROCESS_NAMES = {
+	spotify: "Spotify",
+	obsidian: "Obsidian",
+	cursor: "Cursor",
+	vscode: "Code",
+	gitkraken: "gitkraken",
+	steam: "steam",
+	minecraft: "Minecraft.Windows",
+};
+
+function getProcessNameForApp(app) {
+	// First try the explicit mapping
+	if (app.id && APP_PROCESS_NAMES[app.id.toLowerCase()]) {
+		return APP_PROCESS_NAMES[app.id.toLowerCase()];
+	}
+	// Try to extract from target path
+	if (app.target) {
+		const target = app.target.toLowerCase();
+		if (target.includes("spotify")) return "Spotify";
+		if (target.includes("obsidian")) return "Obsidian";
+		if (target.includes("cursor")) return "Cursor";
+		if (target.includes("code.exe")) return "Code";
+		if (target.includes("gitkraken")) return "gitkraken";
+		if (target.includes("steam")) return "steam";
+		if (target.includes("minecraft")) return "Minecraft.Windows";
+	}
+	// Fallback to label
+	if (app.label) {
+		return app.label;
+	}
+	return null;
+}
+
+async function stopSession(launchedApps = []) {
+	if (!Array.isArray(launchedApps) || launchedApps.length === 0) {
+		return { closed: [] };
+	}
+
+	const closedApps = [];
+	const errors = [];
+
+	for (const app of launchedApps) {
+		let closed = false;
+		let processName = getProcessNameForApp(app);
+
+		// Try to close by process ID first (most reliable)
+		if (app.processId && typeof app.processId === "number") {
+			try {
+				const command = `Stop-Process -Id ${app.processId} -Force -ErrorAction Stop`;
+				await runPowerShellCommand(command);
+				closedApps.push({
+					processId: app.processId,
+					label: app.label || app.target,
+					method: "processId",
+				});
+				closed = true;
+			} catch (error) {
+				// Process might already be closed or not exist
+				const errorMsg = error.message || String(error);
+				if (
+					errorMsg.includes("Cannot find a process") ||
+					errorMsg.includes("not found")
+				) {
+					// Process already closed, consider it successful
+					closedApps.push({
+						processId: app.processId,
+						label: app.label || app.target,
+						method: "processId",
+					});
+					closed = true;
+				} else {
+					// Process ID method failed, will try fallback by name
+					console.warn(
+						`[sessions] Failed to close process ${app.processId} (${
+							app.label || app.target
+						}), trying fallback method...`
+					);
+				}
+			}
+		}
+
+		// If process ID method didn't work or wasn't available, try by name
+		if (!closed && processName) {
+			try {
+				// Try to find and close process by name
+				const command = `Get-Process -Name '${escapeForPowerShell(
+					processName
+				)}' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction Stop`;
+				await runPowerShellCommand(command);
+				closedApps.push({
+					label: app.label || app.target,
+					processName,
+					method: "processName",
+					...(app.processId ? { processId: app.processId } : {}),
+				});
+				closed = true;
+			} catch (error) {
+				const errorMsg = error.message || String(error);
+				if (
+					errorMsg.includes("Cannot find a process") ||
+					errorMsg.includes("not found") ||
+					errorMsg.includes("Cannot bind argument")
+				) {
+					// Process not found, might already be closed
+					closedApps.push({
+						label: app.label || app.target,
+						processName,
+						method: "processName",
+						...(app.processId ? { processId: app.processId } : {}),
+					});
+					closed = true;
+				} else {
+					console.warn(
+						`[sessions] Failed to close process by name '${processName}' (${
+							app.label || app.target
+						}):`,
+						error
+					);
+					errors.push({
+						label: app.label || app.target,
+						processName,
+						...(app.processId ? { processId: app.processId } : {}),
+						error: errorMsg,
+					});
+				}
+			}
+		} else if (!closed && !processName) {
+			// No process ID and no process name available
+			console.warn(
+				`[sessions] Cannot close app: no process ID or process name available for ${
+					app.label || app.target || app.id
+				}`
+			);
+			errors.push({
+				label: app.label || app.target || app.id,
+				error: "No process ID or process name available",
+			});
+		}
+	}
+
+	return {
+		closed: closedApps,
+		errors: errors.length > 0 ? errors : undefined,
 	};
 }
 
@@ -610,6 +857,10 @@ function registerSessionHandlers(ipcMain, config = {}) {
 	ipcMain.handle("session:start-coding", async (_event, payload) =>
 		startCodingSession(payload, resolvedConfig.coding)
 	);
+
+	ipcMain.handle("session:stop", async (_event, payload) =>
+		stopSession(payload?.launchedApps)
+	);
 }
 
 module.exports = {
@@ -617,6 +868,7 @@ module.exports = {
 	startStudySession,
 	startGamingSession,
 	startCodingSession,
+	stopSession,
 	registerSessionHandlers,
 	sanitizeConfigForRenderer,
 	buildResolvedConfig,

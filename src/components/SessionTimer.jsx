@@ -62,6 +62,9 @@ export default function SessionTimer({ session, onClear }) {
 			.sort((a, b) => b - a);
 	}, [session.alertMinutes]);
 
+	// Handle alerts/notifications when timer reaches thresholds
+	// NOTE: This does NOT automatically stop the session or close apps
+	// Apps only close when user manually clicks the "Stop" button
 	useEffect(() => {
 		if (timing.remaining == null || alertThresholds.length === 0) {
 			return;
@@ -135,6 +138,7 @@ export default function SessionTimer({ session, onClear }) {
 					type="button"
 					onClick={onClear}
 					className="rounded-lg border border-transparent px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent transition hover:border-accent/50 hover:bg-accent/10"
+					aria-label="Stop session and close launched apps"
 				>
 					Stop
 				</button>

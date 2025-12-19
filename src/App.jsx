@@ -298,6 +298,9 @@ export default function App() {
 				startedAt: Date.now(),
 				durationMinutes: timerMinutes,
 				alertMinutes,
+				launchedApps: Array.isArray(response?.launchedApps)
+					? response.launchedApps
+					: [],
 			});
 		} catch (sessionStartError) {
 			console.error("Failed to start session", sessionStartError);
@@ -311,7 +314,29 @@ export default function App() {
 		setSessionModal({ isOpen: false, modeId: null });
 	};
 
-	const handleStopSession = () => {
+	const handleStopSession = async () => {
+		// This function is ONLY called when user manually clicks "Stop" button
+		// Apps are NOT closed when timer ends automatically - only on manual stop
+		const sessionsAPI = window.dashboard?.sessions;
+		const currentSession = activeSession;
+
+		// Close launched apps if any
+		if (
+			currentSession?.launchedApps &&
+			Array.isArray(currentSession.launchedApps) &&
+			currentSession.launchedApps.length > 0 &&
+			sessionsAPI?.stop
+		) {
+			try {
+				await sessionsAPI.stop({
+					launchedApps: currentSession.launchedApps,
+				});
+			} catch (error) {
+				console.error("Failed to close session apps:", error);
+				// Continue to clear session even if closing apps fails
+			}
+		}
+
 		setActiveSession(null);
 	};
 

@@ -19,5 +19,6 @@ contextBridge.exposeInMainWorld("dashboard", {
 			ipcRenderer.invoke("session:start-gaming", payload),
 		startCoding: (payload) =>
 			ipcRenderer.invoke("session:start-coding", payload),
+		stop: (payload) => ipcRenderer.invoke("session:stop", payload),
 	},
 });

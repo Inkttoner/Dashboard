@@ -76,7 +76,8 @@ export default function SessionModal({
 
 	const canSubmit =
 		modeId === "study"
-			? (customDuration && Number(customDuration) > 0) || selectedDurationId
+			? (customDuration && Number(customDuration) > 0) ||
+			  selectedDurationId
 			: modeId === "gaming"
 			? Boolean(selectedGameId)
 			: modeId === "coding"
@@ -128,7 +129,9 @@ export default function SessionModal({
 						<h2 className="mt-2 text-2xl font-semibold text-white">
 							{resolvedModeName}
 						</h2>
-						<p className="mt-2 text-sm text-slate-300">{config.message}</p>
+						<p className="mt-2 text-sm text-slate-300">
+							{config.message}
+						</p>
 					</div>
 					<button
 						type="button"
@@ -167,12 +170,18 @@ export default function SessionModal({
 										<input
 											type="radio"
 											name="study-duration"
-											checked={option.id === selectedDurationId}
+											checked={
+												option.id === selectedDurationId
+											}
 											onChange={() => {
-												setSelectedDurationId(option.id);
+												setSelectedDurationId(
+													option.id
+												);
 												setCustomDuration("");
-												if (!numericTimer && option.minutes) {
-													setTimerMinutes(option.minutes);
+												if (option.minutes) {
+													setTimerMinutes(
+														option.minutes
+													);
 												}
 											}}
 											className="h-4 w-4 accent-accent"
@@ -191,9 +200,27 @@ export default function SessionModal({
 									placeholder="E.g. 50"
 									value={customDuration}
 									onChange={(event) => {
-										setCustomDuration(event.target.value);
-										if (event.target.value) {
+										const value = event.target.value;
+										setCustomDuration(value);
+										if (value) {
 											setSelectedDurationId(null);
+											const numValue = Number(value);
+											if (numValue > 0) {
+												setTimerMinutes(numValue);
+											}
+										} else {
+											// Reset to selected radio option's minutes if available
+											const selectedOption =
+												config.durationOptions?.find(
+													(opt) =>
+														opt.id ===
+														selectedDurationId
+												);
+											if (selectedOption?.minutes) {
+												setTimerMinutes(
+													selectedOption.minutes
+												);
+											}
 										}
 									}}
 									className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
@@ -211,7 +238,9 @@ export default function SessionModal({
 								<select
 									value={selectedGameId ?? ""}
 									onChange={(event) =>
-										setSelectedGameId(event.target.value || null)
+										setSelectedGameId(
+											event.target.value || null
+										)
 									}
 									className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
 								>
@@ -230,7 +259,9 @@ export default function SessionModal({
 									rows={3}
 									placeholder="https://tracker.gg&#10;https://discord.com/app"
 									value={websitesText}
-									onChange={(event) => setWebsitesText(event.target.value)}
+									onChange={(event) =>
+										setWebsitesText(event.target.value)
+									}
 									className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
 								/>
 								<p className="mt-1 text-xs text-slate-500">
@@ -249,7 +280,9 @@ export default function SessionModal({
 								<select
 									value={selectedIdeId ?? ""}
 									onChange={(event) =>
-										setSelectedIdeId(event.target.value || null)
+										setSelectedIdeId(
+											event.target.value || null
+										)
 									}
 									className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
 								>
@@ -268,14 +301,16 @@ export default function SessionModal({
 									rows={3}
 									placeholder="https://github.com/Coen/my-project"
 									value={websitesText}
-									onChange={(event) => setWebsitesText(event.target.value)}
+									onChange={(event) =>
+										setWebsitesText(event.target.value)
+									}
 									className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
 								/>
 							</div>
 						</section>
 					)}
 
-					<section>
+					{/* <section>
 						<label className="text-xs font-semibold uppercase tracking-wide text-slate-300">
 							Timer (minutes)
 						</label>
@@ -283,13 +318,13 @@ export default function SessionModal({
 							type="number"
 							min="1"
 							value={timerMinutes ?? ""}
-							onChange={(event) => setTimerMinutes(event.target.value)}
+							onChange={(event) => setTimersetMinutes(event.target.value)}
 							className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
 						/>
 						<p className="mt-1 text-xs text-slate-500">
 							We&apos;ll start a countdown when the session begins.
 						</p>
-					</section>
+					</section> */}
 				</div>
 
 				<footer className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -313,4 +348,3 @@ export default function SessionModal({
 		</div>
 	);
 }
-
